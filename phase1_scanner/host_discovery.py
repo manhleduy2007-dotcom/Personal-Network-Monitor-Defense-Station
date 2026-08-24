@@ -5,11 +5,8 @@ from rich.table import Table
 
 console = Console()
 
-def get_myip(): # hàm này dùng để lấy IP máy = giao thức UDP
+def get_myip(): 
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
-    #use socket to connect with network. 
-    #AI_INET là khai báo IPv4
-    #socket.SOCK_DGRAM => sử dụng giao thức UDP giao thức truyền tải dữ liệu của tầng 4 OSI
     s.connect(("8.8.8.8", 80))
     ip = s.getsockname()[0]
     s.close()
@@ -60,10 +57,15 @@ def main():
     console.print(f"Network have to be scanned: [cyan]{network}[/cyan]\n")
     raw = scan_network(network)
     hosts = parse_results(raw)
-
     if hosts:
         show_results(hosts, my_ip)
     else:
         console.print("[red]Can't find any devices on network.[/red]")
 if __name__ == "__main__":
     main()
+"""
+- Use socket to fake connect to Google DNS sever => get the IP of my laptop 
+- Seperate the IP into 2 parts => get the network to be scanned 
+- Call the nmap to send ARP request to all IPs in the net work 
+(ARP request is in the layer 2 of OSI model) => get the result of the scan
+"""
