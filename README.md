@@ -8,3 +8,5 @@ Một số kiến thức cần nắm được:
 - I use venv to support the library for different versions of Python 
 - Beside, I use Scapy specialized for communicate with network packets 
 - Port: cổng mạng và sử dụng Port Scan để quét xem các thiết bị nào đang online 
+
+8730095968:AAEtZO5BLxPf4YBYk461n6LXtSIcQaYJYZA

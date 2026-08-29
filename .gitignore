@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Personal Network Monitor
+config.py
+data/
+logs/

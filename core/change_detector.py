@@ -4,11 +4,10 @@ from rich.console import Console
  
 console = Console()
  
-SAVE_FILE = "data/last_scan.json"  # đổi từ phase1_scanner/ → data/
+SAVE_FILE = "data/last_scan.json"
  
  
 def save_scan(hosts):
-    """Save scan results to JSON file."""
     data = {
         "scan_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "hosts": hosts
@@ -19,7 +18,6 @@ def save_scan(hosts):
  
  
 def load_last_scan():
-    """Load previous scan results. Returns None if no file found."""
     try:
         with open(SAVE_FILE, "r") as f:
             return json.load(f)
@@ -28,11 +26,10 @@ def load_last_scan():
  
  
 def compare_scans(old_hosts, new_hosts):
-    """Compare two scans — find new and missing devices."""
     old_set = set(old_hosts)
     new_set = set(new_hosts)
  
-    appeared = new_set - old_set     # in new scan but not in old
-    disappeared = old_set - new_set  # in old scan but not in new
+    appeared = new_set - old_set    
+    disappeared = old_set - new_set  
  
     return list(appeared), list(disappeared)
