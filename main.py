@@ -1,5 +1,7 @@
 import time
+# pyrefly: ignore [missing-import]
 from rich.console import Console
+# pyrefly: ignore [missing-import]
 from rich.table import Table
 from core.scanner import get_myip, get_network, scan_network, parse_results
 from core.change_detector import load_last_scan, save_scan, compare_scans

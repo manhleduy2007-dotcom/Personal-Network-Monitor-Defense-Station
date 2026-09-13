@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+# pyrefly: ignore [missing-import]
 from rich.console import Console
  
 console = Console()
