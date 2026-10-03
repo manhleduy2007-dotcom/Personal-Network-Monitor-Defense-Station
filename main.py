@@ -9,6 +9,9 @@ from core.notifier import send_alert
 from core.whitelist import is_trusted, add_to_whitelist
 from core.logger import log_alert
 from config import SCAN_INTERVAL
+from core.port_scanner import scan_ports
+from core.risk_rater import rate_host
+from core.notifier import send_alert, send_port_alert
 console = Console()
 
 def show_current(hosts, my_ip):
@@ -52,7 +55,13 @@ def process_appeared(appeared: list):
             console.print(f"[green][OK] {ip} — whitelisted[/green]")
         else:
             console.print(f"[red][!!] {ip} — UNKNOWN, sending alert...[/red]")
-            send_alert(ip)
+            open_ports = scan_ports(ip) # gọi nmap scan những port 
+            risk_result = rate_host(open_ports)  # sau đó thì chấm điểm risk 
+
+            console.print(f"[red]    Risk: {risk_result['overall_risk']}[/red]")
+            for p in risk_result["rated_ports"]:
+                console.print(f"[dim]    → port {p['port']} ({p['name']}) — {p['risk']}[/dim]")
+            send_port_alert(ip, risk_result)
             log_alert(ip)
 
 
