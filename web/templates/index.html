@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Defense Station</title>
+    <script>
+        (function () {
+            var saved = null;
+            try { saved = localStorage.getItem("theme"); } catch (e) { }
+            var theme = saved || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+            document.documentElement.setAttribute("data-theme", theme);
+        })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
+    <style>
+        /* ============ Theme tokens ============ */
+        :root {
+            --bg: #020a05;
+            --panel: #03110a;
+            --panel-2: #06190e;
+            --line: #0e4a25;
+            --line-hi: #2fbf63;
+            --text: #6cf5a0;
+            --muted: #3fae6a;
+            --dim: #18532f;
+            --high: #ff4f4f;
+            --medium: #ffb636;
+            --low: #6cf5a0;
+            --safe: #3a8f5c;
+            --sweep: rgba(108, 245, 160, .30);
+            --glow: 0 0 8px rgba(108, 245, 160, .45);
+            --scanlines: .22;
+            --display: "Share Tech Mono", ui-monospace, Menlo, Consolas, monospace;
+            --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+            color-scheme: dark;
+        }
+
+        :root[data-theme="light"] {
+            --bg: #e4ece2;
+            --panel: #f2f6f0;
+            --panel-2: #e9f1e6;
+            --line: #a9c6b0;
+            --line-hi: #2c7a45;
+            --text: #0f3d1f;
+            --muted: #3d6b4c;
+            --dim: #b9d2bf;
+            --high: #c62828;
+            --medium: #a86200;
+            --low: #1e7a3c;
+            --safe: #5a7d64;
+            --sweep: rgba(30, 122, 60, .16);
+            --glow: none;
+            --scanlines: 0;
+            color-scheme: light;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            background: radial-gradient(ellipse at 50% -10%, var(--panel-2), var(--bg) 65%) fixed;
+            color: var(--text);
+            font-family: var(--mono);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        /* CRT scanlines */
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 50;
+            opacity: var(--scanlines);
+            background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .7) 0 1px, transparent 1px 3px);
+        }
+
+        ::selection {
+            background: var(--text);
+            color: var(--bg);
+        }
+
+        :focus-visible {
+            outline: 1px solid var(--text);
+            outline-offset: 2px;
+            box-shadow: var(--glow);
+        }
+
+        button {
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .glow {
+            text-shadow: var(--glow);
+        }
+
+        .c-high {
+            color: var(--high);
+        }
+
+        .c-medium {
+            color: var(--medium);
+        }
+
+        .c-low {
+            color: var(--low);
+        }
+
+        .c-safe {
+            color: var(--safe);
+        }
+
+        /* ============ Buttons & inputs ============ */
+        .btn {
+            font-family: var(--display);
+            font-size: 13px;
+            letter-spacing: .08em;
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--line-hi);
+            padding: 7px 14px;
+        }
+
+        .btn:hover {
+            background: var(--panel-2);
+            box-shadow: var(--glow);
+        }
+
+        .btn:disabled {
+            opacity: .5;
+            cursor: wait;
+            box-shadow: none;
+        }
+
+        .btn-hi {
+            background: var(--text);
+            color: var(--bg);
+            border-color: var(--text);
+        }
+
+        .btn-hi:hover {
+            background: var(--text);
+            filter: brightness(1.12);
+        }
+
+        .btn-sm {
+            font-size: 11px;
+            padding: 1px 8px;
+        }
+
+        .btn-icon {
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-icon svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .icon-sun {
+            display: none;
+        }
+
+        :root[data-theme="dark"] .icon-sun {
+            display: block;
+        }
+
+        :root[data-theme="dark"] .icon-moon {
+            display: none;
+        }
+
+        .field {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--line);
+            font: inherit;
+            font-size: 12px;
+            padding: 4px 8px;
+            min-width: 0;
+        }
+
+        .field::placeholder {
+            color: var(--muted);
+            opacity: .7;
+        }
+
+        /* ============ Header ============ */
+        header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px 22px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--line);
+            background: var(--panel);
+            position: relative;
+        }
+
+        .brand {
+            margin: 0;
+            font-family: var(--display);
+            font-weight: 400;
+            font-size: 22px;
+            letter-spacing: .14em;
+            text-shadow: var(--glow);
+        }
+
+        .cursor {
+            display: inline-block;
+            width: .55em;
+            height: .95em;
+            margin-left: 4px;
+            background: var(--text);
+            vertical-align: -2px;
+            animation: blink 1s steps(1) infinite;
+        }
+
+        .meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 18px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .meta b {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .spacer {
+            flex: 1;
+        }
+
+        .hstatus {
+            font-size: 12px;
+            color: var(--muted);
+            min-width: 18ch;
+            text-align: right;
+        }
+
+        .progress {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: -1px;
+            height: 2px;
+        }
+
+        .progress>div {
+            height: 100%;
+            width: 0;
+            background: var(--text);
+            box-shadow: var(--glow);
+            transition: width .4s;
+        }
+
+        /* ============ Grid of panels ============ */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(12, minmax(0, 1fr));
+            gap: 12px;
+            padding: 12px 16px 28px;
+            max-width: 1680px;
+            margin: 0 auto;
+        }
+
+        .c-radar {
+            grid-column: span 4;
+        }
+
+        .c-hosts {
+            grid-column: span 5;
+        }
+
+        .c-target {
+            grid-column: span 3;
+        }
+
+        .c-meters {
+            grid-column: span 3;
+        }
+
+        .c-term {
+            grid-column: span 5;
+        }
+
+        .c-threat {
+            grid-column: span 4;
+        }
+
+        .c-eq {
+            grid-column: span 4;
+        }
+
+        .c-alerts {
+            grid-column: span 5;
+        }
+
+        .c-trust {
+            grid-column: span 3;
+        }
+
+        @media (max-width: 1280px) {
+
+            .c-radar,
+            .c-target,
+            .c-meters {
+                grid-column: span 5;
+            }
+
+            .c-hosts,
+            .c-term,
+            .c-alerts {
+                grid-column: span 7;
+            }
+
+            .c-threat,
+            .c-eq {
+                grid-column: span 6;
+            }
+
+            .c-trust {
+                grid-column: span 5;
+            }
+        }
+
+        @media (max-width: 820px) {
+            .grid>* {
+                grid-column: 1 / -1 !important;
+            }
+
+            .hstatus {
+                text-align: left;
+            }
+        }
+
+        .panel {
+            position: relative;
+            min-width: 0;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            padding: 10px 12px 12px;
+        }
+
+        /* corner brackets */
+        .panel::before {
+            content: "";
+            position: absolute;
+            inset: -1px;
+            pointer-events: none;
+            --c: var(--line-hi);
+            background:
+                linear-gradient(var(--c), var(--c)) top left / 14px 2px no-repeat,
+                linear-gradient(var(--c), var(--c)) top left / 2px 14px no-repeat,
+                linear-gradient(var(--c), var(--c)) top right / 14px 2px no-repeat,
+                linear-gradient(var(--c), var(--c)) top right / 2px 14px no-repeat,
+                linear-gradient(var(--c), var(--c)) bottom left / 14px 2px no-repeat,
+                linear-gradient(var(--c), var(--c)) bottom left / 2px 14px no-repeat,
+                linear-gradient(var(--c), var(--c)) bottom right / 14px 2px no-repeat,
+                linear-gradient(var(--c), var(--c)) bottom right / 2px 14px no-repeat;
+        }
+
+        .ptitle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 0 0 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--line);
+            font-family: var(--display);
+            font-weight: 400;
+            font-size: 13px;
+            letter-spacing: .1em;
+            color: var(--text);
+        }
+
+        .ptitle .tag {
+            color: var(--muted);
+            font-size: 11px;
+            margin-left: auto;
+            letter-spacing: .06em;
+        }
+
+        /* ============ Radar ============ */
+        .radar-wrap {
+            position: relative;
+            width: 100%;
+            max-width: 440px;
+            margin: 0 auto;
+            aspect-ratio: 1;
+        }
+
+        #radar {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .sweep {
+            position: absolute;
+            inset: 2.5%;
+            border-radius: 50%;
+            pointer-events: none;
+            background: conic-gradient(from 0deg, transparent 0deg 280deg, var(--sweep) 360deg);
+            animation: spin 4s linear infinite;
+        }
+
+        #radar .ring {
+            fill: none;
+            stroke: var(--line);
+        }
+
+        #radar .ring-outer {
+            fill: none;
+            stroke: var(--line-hi);
+            stroke-width: 1.2;
+        }
+
+        #radar .axis,
+        #radar .tick {
+            stroke: var(--line);
+        }
+
+        #radar .tick-major {
+            stroke: var(--line-hi);
+        }
+
+        #radar .ring-high {
+            fill: none;
+            stroke: var(--high);
+            stroke-opacity: .7;
+            stroke-width: 1.3;
+        }
+
+        #radar .ring-medium {
+            fill: none;
+            stroke: var(--medium);
+            stroke-opacity: .6;
+            stroke-width: 1.2;
+        }
+
+        #radar .ring-low {
+            fill: none;
+            stroke: var(--low);
+            stroke-opacity: .45;
+            stroke-width: 1.1;
+        }
+
+        #radar .ring-label {
+            font-family: var(--display);
+            font-size: 10px;
+            letter-spacing: .12em;
+            paint-order: stroke;
+            stroke: var(--panel);
+            stroke-width: 5px;
+            stroke-linejoin: round;
+        }
+
+        #radar .blip {
+            cursor: pointer;
+        }
+
+        #radar .blip text {
+            fill: var(--muted);
+            font-family: var(--mono);
+            font-size: 10px;
+        }
+
+        #radar .blip.selected text {
+            fill: var(--text);
+        }
+
+        #radar .halo {
+            fill: none;
+            stroke-width: 1;
+            transform-box: fill-box;
+            transform-origin: center;
+            animation: ping 1.8s ease-out infinite;
+        }
+
+        #radar .lock {
+            fill: none;
+            stroke: var(--text);
+            stroke-width: 1.2;
+        }
+
+        #radar .station {
+            fill: var(--bg);
+            stroke: var(--text);
+            stroke-width: 1.5;
+        }
+
+        #radar .station-txt {
+            fill: var(--text);
+            font-family: var(--display);
+            font-size: 9px;
+            letter-spacing: .1em;
+        }
+
+        .radar-empty {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 12%;
+            text-align: center;
+            color: var(--muted);
+            font-size: 12px;
+            pointer-events: none;
+        }
+
+        /* ============ Hosts table ============ */
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .toolbar .field {
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .seg button {
+            font-family: var(--display);
+            font-size: 11px;
+            letter-spacing: .06em;
+            background: transparent;
+            color: var(--muted);
+            border: 1px solid var(--line);
+            padding: 3px 8px;
+        }
+
+        .seg button[aria-pressed="true"] {
+            color: var(--bg);
+            background: var(--text);
+            border-color: var(--text);
+        }
+
+        .scroll {
+            overflow: auto;
+        }
+
+        .h-hosts {
+            max-height: 400px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            background: var(--panel);
+            z-index: 1;
+            text-align: left;
+            font-family: var(--display);
+            font-weight: 400;
+            letter-spacing: .08em;
+            color: var(--muted);
+            padding: 4px 8px;
+            border-bottom: 1px solid var(--line);
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 5px 8px;
+            border-bottom: 1px dashed var(--line);
+            vertical-align: top;
+            white-space: nowrap;
+        }
+
+        tr.row {
+            cursor: pointer;
+        }
+
+        tr.row:hover td {
+            background: var(--panel-2);
+        }
+
+        tr.row.selected td {
+            background: var(--panel-2);
+            color: var(--text);
+        }
+
+        tr.row.selected td:first-child {
+            box-shadow: inset 2px 0 0 var(--text);
+        }
+
+        td.svc {
+            white-space: normal;
+            min-width: 12ch;
+            max-width: 22ch;
+        }
+
+        .empty td {
+            color: var(--muted);
+            text-align: center;
+            padding: 22px 8px;
+            white-space: normal;
+        }
+
+        .ports {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+        }
+
+        .port {
+            padding: 0 5px;
+            border: 1px solid currentColor;
+            font-size: 11px;
+            line-height: 16px;
+        }
+
+        /* ============ Target ============ */
+        .target-ip {
+            font-family: var(--display);
+            font-size: 26px;
+            letter-spacing: .04em;
+            margin: 0 0 8px;
+            text-shadow: var(--glow);
+            overflow-wrap: anywhere;
+        }
+
+        .kv {
+            display: grid;
+            grid-template-columns: 8ch 1fr;
+            gap: 2px 10px;
+            margin: 0 0 12px;
+            font-size: 12px;
+        }
+
+        .kv dt {
+            color: var(--muted);
+        }
+
+        .kv dd {
+            margin: 0;
+        }
+
+        .plist {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .plist li {
+            padding: 6px 0;
+            border-bottom: 1px dashed var(--line);
+        }
+
+        .plist .top {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .plist .note {
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        /* ============ Risk meters ============ */
+        .meter {
+            display: grid;
+            grid-template-columns: 9ch 1fr 5ch;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+
+        .meter .lbl {
+            font-family: var(--display);
+            letter-spacing: .06em;
+        }
+
+        .meter .num {
+            text-align: right;
+        }
+
+        .track {
+            position: relative;
+            height: 10px;
+            background: repeating-linear-gradient(90deg, var(--dim) 0 6px, transparent 6px 8px);
+        }
+
+        .fill {
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 0;
+            background: repeating-linear-gradient(90deg, currentColor 0 6px, transparent 6px 8px);
+            transition: width .6s;
+        }
+
+        .meter-foot {
+            border-top: 1px solid var(--line);
+            padding-top: 8px;
+            margin-top: 4px;
+            font-size: 11px;
+            color: var(--muted);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2px 10px;
+        }
+
+        .meter-foot b {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        /* ============ Terminal ============ */
+        .term {
+            display: flex;
+            flex-direction: column;
+            height: 300px;
+            background: var(--bg);
+            border: 1px solid var(--line);
+        }
+
+        .term-out {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 10px;
+            font-size: 12px;
+        }
+
+        .tl {
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .tl .t {
+            color: var(--dim);
+        }
+
+        :root[data-theme="light"] .tl .t {
+            color: var(--muted);
+        }
+
+        .tl.cmd {
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .tl.ok {
+            color: var(--low);
+            text-shadow: var(--glow);
+        }
+
+        .tl.warn {
+            color: var(--medium);
+        }
+
+        .tl.err {
+            color: var(--high);
+        }
+
+        .tl.dim {
+            color: var(--muted);
+        }
+
+        .term-in {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-top: 1px solid var(--line);
+            padding: 6px 10px;
+        }
+
+        .prompt {
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .term-in input {
+            flex: 1;
+            min-width: 0;
+            background: transparent;
+            border: 0;
+            color: var(--text);
+            font: inherit;
+            font-size: 12px;
+            outline: none;
+            caret-color: var(--text);
+        }
+
+        /* ============ Threat status ============ */
+        .threat {
+            position: relative;
+            height: 300px;
+            overflow: hidden;
+            background: var(--bg);
+            border: 1px solid var(--line);
+        }
+
+        #binary {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .threat-center {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            text-align: center;
+            padding: 16px;
+        }
+
+        .threat-center svg {
+            width: 64px;
+            height: 64px;
+            filter: drop-shadow(0 0 6px currentColor);
+        }
+
+        :root[data-theme="light"] .threat-center svg {
+            filter: none;
+        }
+
+        .threat-word {
+            font-family: var(--display);
+            font-size: clamp(34px, 4.2vw, 54px);
+            letter-spacing: .12em;
+            line-height: 1;
+            text-shadow: 0 0 14px currentColor;
+            padding: 2px 10px;
+            background: var(--bg);
+        }
+
+        :root[data-theme="light"] .threat-word {
+            text-shadow: none;
+        }
+
+        .threat-sub {
+            font-size: 12px;
+            color: var(--muted);
+            background: var(--bg);
+            padding: 0 6px;
+        }
+
+        .threat.alarm {
+            border-color: var(--high);
+        }
+
+        .threat.alarm .threat-word {
+            animation: alarm 1.2s steps(2) infinite;
+        }
+
+        /* ============ Port equalizer ============ */
+        .eq {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+            height: 200px;
+            overflow-x: auto;
+            padding: 4px 2px 0;
+        }
+
+        .eq-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            height: 100%;
+            min-width: 30px;
+            flex: 1;
+            max-width: 46px;
+            background: none;
+            border: 0;
+            padding: 0;
+        }
+
+        .eq-n {
+            font-size: 11px;
+        }
+
+        .eq-bar {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            border: 1px solid var(--line);
+            background: repeating-linear-gradient(0deg, var(--dim) 0 3px, transparent 3px 6px);
+        }
+
+        :root[data-theme="light"] .eq-bar {
+            background: repeating-linear-gradient(0deg, var(--panel-2) 0 3px, transparent 3px 6px);
+        }
+
+        .eq-bar span {
+            position: absolute;
+            left: 2px;
+            right: 2px;
+            bottom: 2px;
+            background: repeating-linear-gradient(0deg, currentColor 0 4px, transparent 4px 6px);
+            transition: height .6s;
+        }
+
+        .eq-col.selected .eq-bar {
+            border-color: var(--text);
+            box-shadow: var(--glow);
+        }
+
+        .eq-lbl {
+            font-size: 10px;
+            color: var(--muted);
+        }
+
+        .eq-empty {
+            color: var(--muted);
+            font-size: 12px;
+            align-self: center;
+            margin: auto;
+        }
+
+        /* ============ Alerts & trusted ============ */
+        .h-alerts {
+            max-height: 230px;
+        }
+
+        .wl {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            max-height: 170px;
+            overflow: auto;
+        }
+
+        .wl li {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 0;
+            border-bottom: 1px dashed var(--line);
+            font-size: 12px;
+        }
+
+        .wl li span {
+            flex: 1;
+        }
+
+        .wl-form {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .wl-form .field {
+            flex: 1;
+        }
+
+        /* ============ Toast ============ */
+        .toast {
+            position: fixed;
+            bottom: 18px;
+            right: 18px;
+            z-index: 60;
+            display: none;
+            background: var(--panel);
+            border: 1px solid var(--line-hi);
+            padding: 8px 14px;
+            font-size: 12px;
+            box-shadow: var(--glow);
+        }
+
+        .toast.error {
+            border-color: var(--high);
+            color: var(--high);
+        }
+
+        /* ============ Motion ============ */
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes blink {
+            50% {
+                opacity: 0;
+            }
+        }
+
+        @keyframes ping {
+            0% {
+                transform: scale(1);
+                opacity: .9;
+            }
+
+            100% {
+                transform: scale(2.6);
+                opacity: 0;
+            }
+        }
+
+        @keyframes alarm {
+            50% {
+                text-shadow: 0 0 2px currentColor;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+
+            .sweep,
+            .cursor,
+            #radar .halo,
+            .threat.alarm .threat-word {
+                animation: none;
+            }
+
+            .fill,
+            .eq-bar span,
+            .progress>div {
+                transition: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <h1 class="brand">DEFENSE_STATION<span class="cursor" aria-hidden="true"></span></h1>
+        <div class="meta">
+            <span>NET <b>{{ network }}</b></span>
+            <span>HOST <b>{{ my_ip }}</b></span>
+            <span>TIME <b id="clock">--:--:--</b></span>
+        </div>
+        <span class="spacer"></span>
+        <span class="hstatus" id="status" aria-live="polite">IDLE</span>
+        <button class="btn btn-icon" id="themeBtn" type="button" aria-label="Switch to light mode"
+            title="Switch to light mode">
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" />
+                <path
+                    d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+            </svg>
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+            </svg>
+        </button>
+        <button class="btn btn-hi" id="scanBtn">&#9654; SCAN NETWORK</button>
+        <div class="progress" aria-hidden="true">
+            <div id="progressBar"></div>
+        </div>
+    </header>
+
+    <main class="grid">
+        <!-- Radar: distance from the centre = risk level -->
+        <section class="panel c-radar" aria-label="Network radar">
+            <h2 class="ptitle">NETWORK RADAR <span class="tag" id="radarTag">0 HOSTS</span></h2>
+            <div class="radar-wrap">
+                <svg id="radar" viewBox="0 0 400 400" role="img" aria-label="Radar map of devices by risk"></svg>
+                <div class="sweep" aria-hidden="true"></div>
+                <div class="radar-empty" id="radarEmpty">No scan data. Press SCAN NETWORK or type "scan".</div>
+            </div>
+        </section>
+
+        <section class="panel c-hosts" aria-label="Hosts">
+            <h2 class="ptitle">HOSTS <span class="tag" id="hostsTag"></span></h2>
+            <div class="toolbar">
+                <input class="field" type="search" id="search" placeholder="grep ip / port / service"
+                    aria-label="Search hosts">
+                <div class="seg" id="filters" role="group" aria-label="Filter by risk">
+                    <button data-f="ALL" aria-pressed="true">ALL</button>
+                    <button data-f="HIGH" aria-pressed="false">HIGH</button>
+                    <button data-f="MEDIUM" aria-pressed="false">MED</button>
+                    <button data-f="UNTRUSTED" aria-pressed="false">UNTRUSTED</button>
+                </div>
+            </div>
+            <div class="scroll h-hosts">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>IP ADDR</th>
+                            <th>OPEN PORTS</th>
+                            <th>SERVICES</th>
+                            <th>RISK</th>
+                            <th>TRUST</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hostRows"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel c-target" aria-label="Selected target">
+            <h2 class="ptitle">TARGET <span class="tag" id="targetTag">NONE</span></h2>
+            <div id="target"></div>
+        </section>
+
+        <section class="panel c-meters" aria-label="Risk summary">
+            <h2 class="ptitle">RISK LEVELS</h2>
+            <div id="meters"></div>
+        </section>
+
+        <section class="panel c-term" aria-label="Terminal">
+            <h2 class="ptitle">TERMINAL <span class="tag">type "help"</span></h2>
+            <div class="term">
+                <div class="term-out" id="termOut" role="log" aria-live="polite"></div>
+                <form class="term-in" id="termForm">
+                    <label class="prompt" for="termInput">root@defense:~$</label>
+                    <input id="termInput" autocomplete="off" spellcheck="false">
+                </form>
+            </div>
+        </section>
+
+        <section class="panel c-threat" aria-label="Threat status">
+            <h2 class="ptitle">THREAT STATUS <span class="tag" id="threatTag"></span></h2>
+            <div class="threat" id="threatBox">
+                <canvas id="binary" aria-hidden="true"></canvas>
+                <div class="threat-center" id="threatCenter"></div>
+            </div>
+        </section>
+
+        <section class="panel c-eq" aria-label="Open ports per host">
+            <h2 class="ptitle">PORT EXPOSURE <span class="tag">open ports per host</span></h2>
+            <div class="eq" id="eq"></div>
+        </section>
+
+        <section class="panel c-alerts" aria-label="Alert log">
+            <h2 class="ptitle">ALERT LOG <button class="btn btn-sm" id="reloadAlerts"
+                    style="margin-left:auto">RELOAD</button></h2>
+            <div class="scroll h-alerts">
+                <table>
+                    <thead id="alertHead"></thead>
+                    <tbody id="alertRows"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel c-trust" aria-label="Trusted hosts">
+            <h2 class="ptitle">TRUSTED HOSTS <span class="tag" id="trustTag"></span></h2>
+            <ul class="wl" id="wlList"></ul>
+            <form class="wl-form" id="wlForm">
+                <input class="field" type="text" id="wlIp" placeholder="192.168.1.20" aria-label="IP address to trust"
+                    required>
+                <button class="btn btn-sm" type="submit">ADD</button>
+            </form>
+        </section>
+    </main>
+
+    <div class="toast" id="toast" role="status"></div>
+
+    <script>
+        const NETWORK = "{{ network }}";
+        const MY_IP = "{{ my_ip }}";
+
+        const RISK_LABEL = { CRITICAL: "CRITICAL", HIGH: "HIGH", MEDIUM: "MEDIUM", LOW: "LOW", SAFE: "SAFE", NONE: "SAFE", UNKNOWN: "UNKNOWN" };
+        const RISK_ORDER = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, SAFE: 0, NONE: 0, UNKNOWN: 0 };
+        const RISK_TONE = { CRITICAL: "high", HIGH: "high", MEDIUM: "medium", LOW: "low", SAFE: "safe", NONE: "safe", UNKNOWN: "safe" };
+
+        const state = { devices: [], whitelist: [], finishedAt: null, selected: null, filter: "ALL", query: "", polling: null, lastKey: "" };
+        const $ = (id) => document.getElementById(id);
+
+        /* ---------- Helpers ---------- */
+        function esc(s) {
+            return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+        }
+        function norm(r) { r = String(r || "UNKNOWN").toUpperCase(); return r in RISK_LABEL ? r : "UNKNOWN"; }
+        function riskOf(d) { return norm(d.risk); }
+        function tone(r) { return RISK_TONE[norm(r)]; }
+        function isHigh(d) { return ["HIGH", "CRITICAL"].includes(riskOf(d)); }
+        function isThreat(d) { return isHigh(d) && !d.trusted && !d.is_self; }
+        function octet(ip) { return "." + String(ip).split(".").pop(); }
+        function pad(n) { return String(n).padStart(2, "0"); }
+        function fmtTime(iso) { return iso ? new Date(iso).toLocaleString("en-GB") : "never"; }
+        function portTags(ports) {
+            if (!ports || !ports.length) return `<span class="muted">--</span>`;
+            return `<span class="ports">${ports.map(p => `<span class="port c-${tone(p.risk)}" title="${esc(p.service)}">${p.port}</span>`).join("")}</span>`;
+        }
+
+        function toast(msg, isError = false) {
+            const t = $("toast");
+            t.textContent = msg; t.className = "toast" + (isError ? " error" : ""); t.style.display = "block";
+            clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 3500);
+        }
+
+        async function api(url, opts = {}) {
+            const res = await fetch(url, { headers: { "Content-Type": "application/json" }, ...opts });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || `Request failed (${res.status})`);
+            return data;
+        }
+
+        /* ---------- Terminal ---------- */
+        function log(text, kind = "") {
+            const out = $("termOut");
+            const line = document.createElement("div");
+            line.className = "tl " + kind;
+            line.innerHTML = `<span class="t">${new Date().toLocaleTimeString("en-GB")}</span> ${esc(text)}`;
+            out.appendChild(line);
+            while (out.children.length > 400) out.firstChild.remove();
+            out.scrollTop = out.scrollHeight;
+        }
+
+        const HELP = [
+            "scan                 run a full network + port scan",
+            "hosts                list hosts from the last scan",
+            "info <ip>            show open ports of a host",
+            "trust <ip>           add a host to the whitelist",
+            "untrust <ip>         remove a host from the whitelist",
+            "filter all|high|med|untrusted",
+            "theme                switch dark / light",
+            "clear                clear the terminal",
+        ];
+
+        const COMMANDS = {
+            help: () => HELP.forEach(l => log(l, "dim")),
+            scan: () => startScan(),
+            clear: () => { $("termOut").innerHTML = ""; },
+            theme: () => toggleTheme(),
+            hosts: () => {
+                if (!state.devices.length) return log("no hosts yet. run 'scan' first", "warn");
+                state.devices.forEach((d, i) => log(
+                    `${pad(i + 1)}  ${d.ip.padEnd(16)} ${RISK_LABEL[riskOf(d)].padEnd(9)} ports:${(d.ports || []).map(p => p.port).join(",") || "-"}${d.trusted ? "  [trusted]" : ""}`,
+                    isThreat(d) ? "err" : ""));
+            },
+            info: ip => {
+                const d = state.devices.find(x => x.ip === ip);
+                if (!d) return log(`host ${ip || "?"} not found`, "err");
+                select(ip, true);
+                log(`${d.ip}  risk=${RISK_LABEL[riskOf(d)]}  trusted=${d.trusted ? "yes" : "no"}`, isThreat(d) ? "err" : "ok");
+                (d.ports || []).forEach(p => log(`  ${String(p.port).padEnd(6)}/tcp  ${String(p.service).padEnd(12)} ${RISK_LABEL[norm(p.risk)]}`, tone(p.risk) === "high" ? "err" : tone(p.risk) === "medium" ? "warn" : ""));
+                if (!(d.ports || []).length) log("  no monitored ports open", "dim");
+            },
+            trust: ip => ip ? trust(ip) : log("usage: trust <ip>", "warn"),
+            untrust: ip => ip ? untrust(ip) : log("usage: untrust <ip>", "warn"),
+            filter: f => {
+                const map = { all: "ALL", high: "HIGH", med: "MEDIUM", medium: "MEDIUM", untrusted: "UNTRUSTED" };
+                if (!map[f]) return log("usage: filter all|high|med|untrusted", "warn");
+                setFilter(map[f]); log(`filter set to ${map[f].toLowerCase()}`, "dim");
+            },
+        };
+
+        const history = []; let histIdx = 0;
+        function runCommand(raw) {
+            const line = raw.trim();
+            if (!line) return;
+            history.push(line); histIdx = history.length;
+            log(`$ ${line}`, "cmd");
+            const [cmd, arg] = line.split(/\s+/);
+            const fn = COMMANDS[cmd.toLowerCase()];
+            fn ? fn(arg) : log(`command not found: ${cmd}. type 'help'`, "err");
+        }
+
+        /* ---------- Data ---------- */
+        async function loadDevices() {
+            const data = await api("/api/devices");
+            state.devices = (data.devices || []).sort((a, b) => RISK_ORDER[riskOf(b)] - RISK_ORDER[riskOf(a)] || a.ip.localeCompare(b.ip, undefined, { numeric: true }));
+            state.finishedAt = data.finished_at;
+            if (state.selected && !state.devices.some(d => d.ip === state.selected)) state.selected = null;
+            if (!state.polling) $("status").textContent = state.finishedAt ? `LAST SCAN ${fmtTime(state.finishedAt)}` : "IDLE";
+            renderAll();
+        }
+
+        async function loadAlerts() {
+            const data = await api("/api/alerts");
+            $("alertHead").innerHTML = data.columns.length ? `<tr>${data.columns.map(c => `<th>${esc(String(c).toUpperCase())}</th>`).join("")}</tr>` : "";
+            $("alertRows").innerHTML = data.rows.length
+                ? data.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")
+                : `<tr class="empty"><td colspan="${Math.max(data.columns.length, 1)}">No alerts in logs/alert_log.csv yet.</td></tr>`;
+        }
+
+        async function loadWhitelist() {
+            const data = await api("/api/whitelist");
+            state.whitelist = data.entries || [];
+            renderWhitelist();
+        }
+
+        /* ---------- Scanning ---------- */
+        async function startScan() {
+            try {
+                await api("/api/scan", { method: "POST" });
+                $("scanBtn").disabled = true;
+                $("scanBtn").textContent = "SCANNING...";
+                state.lastKey = "";
+                log(`[>] scan started on ${NETWORK}`, "ok");
+                pollStatus();
+            } catch (e) { log(`[x] ${e.message}`, "err"); toast(e.message, true); }
+        }
+
+        function pollStatus() {
+            clearInterval(state.polling);
+            state.polling = setInterval(async () => {
+                let s;
+                try { s = await api("/api/status"); } catch { return; }
+                const bar = $("progressBar");
+
+                if (s.status === "discovering") {
+                    if (state.lastKey !== "discovering") log("[~] discovering live hosts...", "dim");
+                    state.lastKey = "discovering";
+                    $("status").textContent = "DISCOVERING HOSTS";
+                    bar.style.width = "6%";
+                } else if (s.status === "scanning") {
+                    if (!state.lastKey.startsWith("scan:")) log(`[+] ${s.total} host(s) online`, "ok");
+                    const key = "scan:" + s.current_ip;
+                    if (state.lastKey !== key && s.current_ip) log(`[~] probing ports on ${s.current_ip}  (${s.done + 1}/${s.total})`);
+                    state.lastKey = key;
+                    const pct = Math.round(6 + 94 * (s.done / Math.max(s.total, 1)));
+                    $("status").textContent = `SCANNING ${s.current_ip || ""} ${pct}%`;
+                    bar.style.width = pct + "%";
+                } else {
+                    clearInterval(state.polling); state.polling = null;
+                    $("scanBtn").disabled = false;
+                    $("scanBtn").innerHTML = "&#9654; SCAN NETWORK";
+                    bar.style.width = "100%";
+                    setTimeout(() => bar.style.width = "0", 700);
+                    if (s.status === "error") {
+                        $("status").textContent = "SCAN FAILED";
+                        log(`[x] scan failed: ${s.error}`, "err");
+                        toast(`Scan failed: ${s.error}`, true);
+                    } else {
+                        await Promise.all([loadDevices(), loadAlerts()]);
+                        reportFindings();
+                        toast(`Scan complete: ${s.total} host(s) checked`);
+                    }
+                }
+            }, 1500);
+        }
+
+        function reportFindings() {
+            const threats = state.devices.filter(isThreat);
+            log(`[+] scan complete. ${state.devices.length} host(s), ${threats.length} threat(s)`, threats.length ? "warn" : "ok");
+            threats.forEach(d => log(`[!] ${d.ip} ${RISK_LABEL[riskOf(d)]}  open: ${(d.ports || []).map(p => `${p.port}/${p.service}`).join(" ")}`, "err"));
+        }
+
+        /* ---------- Rendering ---------- */
+        function renderAll() { renderRadar(); renderHosts(); renderTarget(); renderMeters(); renderThreat(); renderEq(); }
+
+        function renderRadar() {
+            const svg = $("radar"), C = 200;
+            const RINGS = [
+                { r: 62, key: "inner", label: "HIGH", tone: "high" },
+                { r: 118, key: "mid", label: "MED", tone: "medium" },
+                { r: 172, key: "outer", label: "LOW / SAFE", tone: "low" },
+            ];
+            const groups = { inner: [], mid: [], outer: [] };
+            state.devices.filter(d => !d.is_self).forEach(d => {
+                (isHigh(d) ? groups.inner : riskOf(d) === "MEDIUM" ? groups.mid : groups.outer).push(d);
+            });
+
+            let g = `<circle class="ring-outer" cx="${C}" cy="${C}" r="190"/>`;
+            for (let a = 0; a < 360; a += 10) {
+                const rad = a * Math.PI / 180, major = a % 90 === 0, r1 = major ? 180 : 185;
+                g += `<line class="${major ? "tick-major" : "tick"}" x1="${C + r1 * Math.cos(rad)}" y1="${C + r1 * Math.sin(rad)}" x2="${C + 190 * Math.cos(rad)}" y2="${C + 190 * Math.sin(rad)}"/>`;
+            }
+            g += `<line class="axis" x1="${C}" y1="10" x2="${C}" y2="390"/><line class="axis" x1="10" y1="${C}" x2="390" y2="${C}"/>`;
+            RINGS.forEach(R => {
+                g += `<circle class="ring-${R.tone}" cx="${C}" cy="${C}" r="${R.r}"/>`;
+            });
+
+            let blips = "";
+            RINGS.forEach((R, ri) => {
+                const list = groups[R.key], n = list.length;
+                list.forEach((d, i) => {
+                    const ang = (295 + ((i + 0.5) / n) * 290 + ri * 10) * Math.PI / 180;
+                    const x = C + R.r * Math.cos(ang), y = C + R.r * Math.sin(ang);
+                    const col = `var(--${tone(d.risk)})`;
+                    const sel = state.selected === d.ip;
+                    const right = Math.cos(ang) >= 0;
+                    blips += `<g class="blip ${sel ? "selected" : ""}" data-ip="${esc(d.ip)}" tabindex="0" role="button"
+                   aria-label="${esc(d.ip)}, ${RISK_LABEL[riskOf(d)]} risk${d.trusted ? ", trusted" : ""}">
+          ${d.trusted ? "" : `<circle class="halo" cx="${x}" cy="${y}" r="6" stroke="${col}"/>`}
+          <circle cx="${x}" cy="${y}" r="5" fill="${col}"/>
+          ${sel ? `<rect class="lock" x="${x - 11}" y="${y - 11}" width="22" height="22" stroke-dasharray="6 10" stroke-dashoffset="3"/>` : ""}
+          <text x="${x + (right ? 10 : -10)}" y="${y + 4}" text-anchor="${right ? "start" : "end"}">${esc(octet(d.ip))}</text>
+        </g>`;
+                });
+            });
+
+            // Ring labels sit on the top of each ring, in the wedge kept free of blips
+            RINGS.forEach(R => {
+                g += `<text class="ring-label" x="${C}" y="${C - R.r}" text-anchor="middle" dominant-baseline="middle" fill="var(--${R.tone})">${R.label}</text>`;
+            });
+            g += blips + `<rect class="station" x="${C - 9}" y="${C - 9}" width="18" height="18" transform="rotate(45 ${C} ${C})"/>
+                <text class="station-txt" x="${C}" y="${C + 24}" text-anchor="middle">YOU ${esc(octet(MY_IP))}</text>`;
+            svg.innerHTML = g;
+
+            $("radarEmpty").style.display = state.devices.length ? "none" : "flex";
+            $("radarTag").textContent = `${state.devices.length} HOSTS`;
+            svg.querySelectorAll(".blip").forEach(b => {
+                b.addEventListener("click", () => select(b.dataset.ip));
+                b.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(b.dataset.ip); } });
+            });
+        }
+
+        function visibleDevices() {
+            const q = state.query.toLowerCase();
+            return state.devices.filter(d => {
+                if (state.filter === "UNTRUSTED" && d.trusted) return false;
+                if (state.filter === "HIGH" && !isHigh(d)) return false;
+                if (state.filter === "MEDIUM" && riskOf(d) !== "MEDIUM") return false;
+                return !q || d.ip.includes(q) || (d.ports || []).some(p => String(p.port).includes(q) || String(p.service).toLowerCase().includes(q));
+            });
+        }
+
+        function renderHosts() {
+            const rows = visibleDevices();
+            $("hostsTag").textContent = `${rows.length}/${state.devices.length} SHOWN`;
+            if (!rows.length) {
+                $("hostRows").innerHTML = `<tr class="empty"><td colspan="6">${state.devices.length ? "No hosts match this filter." : "No data yet. Press SCAN NETWORK to start."}</td></tr>`;
+                return;
+            }
+            $("hostRows").innerHTML = rows.map((d, i) => `
+    <tr class="row ${state.selected === d.ip ? "selected" : ""}" data-ip="${esc(d.ip)}">
+      <td class="muted">${pad(i + 1)}</td>
+      <td>${esc(d.ip)}${d.is_self ? ` <span class="muted">(you)</span>` : ""}</td>
+      <td>${portTags(d.ports)}</td>
+      <td class="muted svc">${esc((d.ports || []).map(p => p.service).join(" ") || "--")}</td>
+      <td class="c-${tone(d.risk)}">${RISK_LABEL[riskOf(d)]}</td>
+      <td>${d.trusted ? `<span class="muted">TRUSTED</span>` : `<button class="btn btn-sm" data-trust="${esc(d.ip)}">TRUST</button>`}</td>
+    </tr>`).join("");
+
+            $("hostRows").querySelectorAll("tr.row").forEach(tr =>
+                tr.addEventListener("click", e => { if (!e.target.closest("button")) select(tr.dataset.ip); }));
+            $("hostRows").querySelectorAll("[data-trust]").forEach(b =>
+                b.addEventListener("click", () => trust(b.dataset.trust)));
+        }
+
+        function renderTarget() {
+            const d = state.devices.find(x => x.ip === state.selected);
+            if (!d) {
+                $("targetTag").textContent = "NONE";
+                $("target").innerHTML = `<p class="muted">${state.devices.length
+                    ? "Select a host on the radar or in the table, or type: info &lt;ip&gt;" : "Waiting for scan data."}</p>`;
+                return;
+            }
+            const ports = d.ports || [];
+            $("targetTag").textContent = "LOCKED";
+            $("target").innerHTML = `
+    <p class="target-ip">${esc(d.ip)}</p>
+    <dl class="kv">
+      <dt>RISK</dt><dd class="c-${tone(d.risk)}">${RISK_LABEL[riskOf(d)]}</dd>
+      <dt>STATUS</dt><dd>${d.is_self ? "this machine" : d.trusted ? "trusted" : `<span class="c-medium">not in whitelist</span>`}</dd>
+      <dt>PORTS</dt><dd>${ports.length} open</dd>
+    </dl>
+    ${ports.length ? `<ul class="plist">${ports.map(p => `
+      <li>
+        <div class="top"><span>${p.port}/tcp <span class="muted">${esc(p.service)}</span></span><span class="c-${tone(p.risk)}">${RISK_LABEL[norm(p.risk)]}</span></div>
+        ${p.version ? `<div class="note">${esc(p.version)}</div>` : ""}
+        ${p.note ? `<div class="note">${esc(p.note)}</div>` : ""}
+      </li>`).join("")}</ul>` : `<p class="muted">No monitored ports open.</p>`}
+    <div style="margin-top:12px">${d.is_self ? "" : d.trusted
+                    ? `<button class="btn btn-sm" id="tUntrust">REMOVE FROM WHITELIST</button>`
+                    : `<button class="btn btn-sm" id="tTrust">ADD TO WHITELIST</button>`}</div>`;
+            $("tTrust")?.addEventListener("click", () => trust(d.ip));
+            $("tUntrust")?.addEventListener("click", () => untrust(d.ip));
+        }
+
+        function renderMeters() {
+            const total = state.devices.length;
+            const rows = [
+                ["CRIT/HIGH", state.devices.filter(isHigh).length, "high"],
+                ["MEDIUM", state.devices.filter(d => riskOf(d) === "MEDIUM").length, "medium"],
+                ["LOW", state.devices.filter(d => riskOf(d) === "LOW").length, "low"],
+                ["SAFE", state.devices.filter(d => ["SAFE", "NONE", "UNKNOWN"].includes(riskOf(d))).length, "safe"],
+            ];
+            const untrusted = state.devices.filter(d => !d.trusted && !d.is_self).length;
+            const openPorts = state.devices.reduce((s, d) => s + (d.ports || []).length, 0);
+            $("meters").innerHTML = rows.map(([lbl, n, t]) => `
+    <div class="meter c-${t}">
+      <span class="lbl">${lbl}</span>
+      <div class="track"><div class="fill" style="width:${total ? (n / total) * 100 : 0}%"></div></div>
+      <span class="num">${pad(n)}</span>
+    </div>`).join("") + `
+    <div class="meter-foot">
+      <span>HOSTS <b>${pad(total)}</b></span>
+      <span>UNTRUSTED <b>${pad(untrusted)}</b></span>
+      <span>OPEN PORTS <b>${pad(openPorts)}</b></span>
+      <span>LAST <b>${state.finishedAt ? new Date(state.finishedAt).toLocaleTimeString("en-GB") : "--"}</b></span>
+    </div>`;
+        }
+
+        const LOCK_CLOSED = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10"/><path d="M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11"/><path d="M12 15v2.5"/></svg>`;
+        const LOCK_OPEN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10"/><path d="M7.5 11V7.5a4.5 4.5 0 0 1 8.8-1.3"/><path d="M12 15v2.5"/></svg>`;
+
+        function renderThreat() {
+            const threats = state.devices.filter(isThreat);
+            const box = $("threatBox");
+            let word, sub, icon, cls;
+            if (!state.devices.length) {
+                word = "STANDBY"; sub = "no scan data"; icon = LOCK_CLOSED; cls = "c-safe";
+            } else if (threats.length) {
+                word = "THREAT"; icon = LOCK_OPEN; cls = "c-high";
+                sub = `${threats.length} untrusted high-risk host(s): ${threats.slice(0, 3).map(d => d.ip).join(", ")}${threats.length > 3 ? "..." : ""}`;
+            } else {
+                word = "SECURE"; icon = LOCK_CLOSED; cls = "c-low";
+                sub = `${state.devices.length} host(s) checked, no untrusted high-risk hosts`;
+            }
+            box.classList.toggle("alarm", threats.length > 0);
+            $("threatTag").textContent = threats.length ? `${threats.length} ACTIVE` : "";
+            $("threatCenter").innerHTML = `<span class="${cls}">${icon}</span><span class="threat-word ${cls}">${word}</span><span class="threat-sub">${esc(sub)}</span>`;
+        }
+
+        function renderEq() {
+            const list = state.devices;
+            if (!list.length) { $("eq").innerHTML = `<p class="eq-empty">No hosts scanned yet.</p>`; return; }
+            const max = Math.max(4, ...list.map(d => (d.ports || []).length));
+            $("eq").innerHTML = list.map(d => {
+                const n = (d.ports || []).length;
+                return `<button class="eq-col c-${tone(d.risk)} ${state.selected === d.ip ? "selected" : ""}" data-ip="${esc(d.ip)}" aria-label="${esc(d.ip)}: ${n} open ports">
+      <span class="eq-n">${n}</span>
+      <span class="eq-bar"><span style="height:calc(${(n / max) * 100}% - 4px)"></span></span>
+      <span class="eq-lbl">${esc(octet(d.ip))}</span>
+    </button>`;
+            }).join("");
+            $("eq").querySelectorAll(".eq-col").forEach(b => b.addEventListener("click", () => select(b.dataset.ip)));
+        }
+
+        function renderWhitelist() {
+            $("trustTag").textContent = `${state.whitelist.length} ENTRIES`;
+            $("wlList").innerHTML = state.whitelist.length ? state.whitelist.map(ip => `
+    <li><span>&gt; ${esc(ip)}</span><button class="btn btn-sm" data-remove="${esc(ip)}">REMOVE</button></li>`).join("")
+                : `<li class="muted">No trusted hosts yet.</li>`;
+            $("wlList").querySelectorAll("[data-remove]").forEach(b => b.addEventListener("click", () => untrust(b.dataset.remove)));
+        }
+
+        function select(ip, force = false) {
+            state.selected = (!force && state.selected === ip) ? null : ip;
+            renderAll();
+        }
+        function setFilter(f) {
+            state.filter = f;
+            $("filters").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.f === f));
+            renderHosts();
+        }
+
+        /* ---------- Whitelist ---------- */
+        async function trust(ip) {
+            try {
+                const data = await api("/api/whitelist", { method: "POST", body: JSON.stringify({ ip }) });
+                state.whitelist = data.entries; renderWhitelist();
+                await loadDevices();
+                log(`[+] ${ip} added to whitelist`, "ok");
+            } catch (e) { log(`[x] ${e.message}`, "err"); toast(e.message, true); }
+        }
+        async function untrust(ip) {
+            try {
+                const data = await api(`/api/whitelist?ip=${encodeURIComponent(ip)}`, { method: "DELETE" });
+                state.whitelist = data.entries; renderWhitelist();
+                await loadDevices();
+                log(`[-] ${ip} removed from whitelist`, "warn");
+            } catch (e) { log(`[x] ${e.message}`, "err"); toast(e.message, true); }
+        }
+
+        /* ---------- Binary stream (background of the threat panel) ---------- */
+        const bin = { ctx: null, cols: 0, rows: 0, cells: [], size: 13, timer: null };
+        function setupBinary() {
+            const cv = $("binary"), dpr = window.devicePixelRatio || 1;
+            const w = cv.clientWidth, h = cv.clientHeight;
+            cv.width = w * dpr; cv.height = h * dpr;
+            bin.ctx = cv.getContext("2d"); bin.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            bin.cols = Math.ceil(w / (bin.size * 0.75)); bin.rows = Math.ceil(h / bin.size);
+            bin.cells = Array.from({ length: bin.cols * bin.rows }, () => Math.random() < .5 ? "0" : "1");
+            drawBinary();
+        }
+        function drawBinary() {
+            const { ctx, cols, rows, cells, size } = bin;
+            if (!ctx) return;
+            const cs = getComputedStyle(document.documentElement);
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            ctx.font = `${size}px ${cs.getPropertyValue("--mono")}`;
+            ctx.fillStyle = cs.getPropertyValue(document.documentElement.dataset.theme === "light" ? "--line" : "--dim");
+            for (let r = 0; r < rows; r++)
+                for (let c = 0; c < cols; c++)
+                    ctx.fillText(cells[r * cols + c], c * size * 0.75, (r + 1) * size - 2);
+        }
+        function tickBinary() {
+            if (document.hidden) return;
+            for (let i = 0; i < bin.cells.length * 0.04; i++) {
+                const k = (Math.random() * bin.cells.length) | 0;
+                bin.cells[k] = bin.cells[k] === "0" ? "1" : "0";
+            }
+            drawBinary();
+        }
+
+        /* ---------- Theme ---------- */
+        function applyTheme(theme) {
+            document.documentElement.setAttribute("data-theme", theme);
+            const next = theme === "dark" ? "light" : "dark";
+            $("themeBtn").setAttribute("aria-label", `Switch to ${next} mode`);
+            $("themeBtn").title = `Switch to ${next} mode`;
+            drawBinary();
+        }
+        function toggleTheme() {
+            const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+            applyTheme(next);
+            try { localStorage.setItem("theme", next); } catch (e) { }
+            log(`theme set to ${next}`, "dim");
+        }
+
+        /* ---------- Events ---------- */
+        $("scanBtn").addEventListener("click", startScan);
+        $("themeBtn").addEventListener("click", toggleTheme);
+        $("reloadAlerts").addEventListener("click", () => loadAlerts().then(() => log("alert log reloaded", "dim")));
+        $("search").addEventListener("input", e => { state.query = e.target.value; renderHosts(); });
+        $("filters").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setFilter(b.dataset.f); });
+        $("wlForm").addEventListener("submit", e => { e.preventDefault(); trust($("wlIp").value.trim()); e.target.reset(); });
+        $("termForm").addEventListener("submit", e => { e.preventDefault(); runCommand($("termInput").value); $("termInput").value = ""; });
+        $("termInput").addEventListener("keydown", e => {
+            if (e.key === "ArrowUp" && histIdx > 0) { histIdx--; $("termInput").value = history[histIdx]; e.preventDefault(); }
+            if (e.key === "ArrowDown") { histIdx = Math.min(history.length, histIdx + 1); $("termInput").value = history[histIdx] || ""; e.preventDefault(); }
+        });
+        document.querySelector(".term").addEventListener("click", e => { if (!e.target.closest("button")) $("termInput").focus(); });
+        new ResizeObserver(setupBinary).observe($("threatBox"));
+        setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-GB"); }, 1000);
+
+        /* ---------- Boot ---------- */
+        (async () => {
+            $("clock").textContent = new Date().toLocaleTimeString("en-GB");
+            applyTheme(document.documentElement.getAttribute("data-theme") || "dark");
+            if (!matchMedia("(prefers-reduced-motion: reduce)").matches) bin.timer = setInterval(tickBinary, 140);
+
+            log("DEFENSE_STATION v3.0 // personal network monitor", "ok");
+            log(`interface ${MY_IP} on ${NETWORK}`, "dim");
+            log("loading last scan...", "dim");
+            await Promise.allSettled([loadDevices(), loadAlerts(), loadWhitelist()]);
+            if (state.devices.length) {
+                log(`[+] ${state.devices.length} host(s) from scan at ${fmtTime(state.finishedAt)}`, "ok");
+                const threats = state.devices.filter(isThreat);
+                if (threats.length) log(`[!] ${threats.length} untrusted high-risk host(s). type 'hosts' to list`, "err");
+            } else {
+                log("no previous scan. type 'scan' or press SCAN NETWORK", "warn");
+            }
+            log("type 'help' for commands", "dim");
+
+            // If the page is reopened mid-scan, keep tracking it
+            const s = await api("/api/status").catch(() => null);
+            if (s && ["discovering", "scanning"].includes(s.status)) {
+                $("scanBtn").disabled = true; $("scanBtn").textContent = "SCANNING...";
+                log("[~] a scan is already running, attaching...", "dim");
+                pollStatus();
+            }
+        })();
+    </script>
+</body>
+
+</html>
