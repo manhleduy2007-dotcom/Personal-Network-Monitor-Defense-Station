@@ -1,7 +1,7 @@
 import time
-# pyrefly: ignore [missing-import]
+
 from rich.console import Console
-# pyrefly: ignore [missing-import]
+
 from rich.table import Table
 from core.scanner import get_myip, get_network, scan_network, parse_results
 from core.change_detector import load_last_scan, save_scan, compare_scans
@@ -47,23 +47,21 @@ def show_changes(appeared, disappeared, old_time):
             table.add_row(ip, "No longer on network")
         console.print(table)
 
-
 def process_appeared(appeared: list):
-    """Xử lý thiết bị mới — check whitelist, gửi alert, ghi log."""
+
     for ip in appeared:
         if is_trusted(ip):
             console.print(f"[green][OK] {ip} — whitelisted[/green]")
         else:
             console.print(f"[red][!!] {ip} — UNKNOWN, sending alert...[/red]")
-            open_ports = scan_ports(ip) # gọi nmap scan những port 
-            risk_result = rate_host(open_ports)  # sau đó thì chấm điểm risk 
+            open_ports = scan_ports(ip)
+            risk_result = rate_host(open_ports)
 
             console.print(f"[red]    Risk: {risk_result['overall_risk']}[/red]")
             for p in risk_result["rated_ports"]:
                 console.print(f"[dim]    → port {p['port']} ({p['name']}) — {p['risk']}[/dim]")
             send_port_alert(ip, risk_result)
             log_alert(ip)
-
 
 def main():
     console.print("\n[bold]Personal Network Monitor — Phase 1[/bold]\n")
@@ -94,7 +92,6 @@ def main():
         save_scan(current_hosts)
         console.print(f"\n[dim]Next scan in {SCAN_INTERVAL}s...[/dim]\n")
         time.sleep(SCAN_INTERVAL)
-
 
 if __name__ == "__main__":
     main()

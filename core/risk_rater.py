@@ -1,4 +1,3 @@
-# cái này dùng để tra cứu các thiết bị có port nguy hiểm
 DANGEROUS_PORTS = {
     21:   ("FTP",      "HIGH",   "FTP gửi mật khẩu dạng plaintext"),
     22:   ("SSH",      "MEDIUM", "Điều khiển từ xa — dễ bị brute-force"),
@@ -15,9 +14,7 @@ DANGEROUS_PORTS = {
     8443: ("HTTPS-alt","LOW",    "Web có mã hóa"),
 }
 
-# Chú ý: chỉ dùng 4 mức SAFE/LOW/MEDIUM/HIGH để đồng nhất với app.py
 RISK_LEVEL = {"SAFE": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3}
-
 
 def rate_port(port: int) -> dict:
     if port in DANGEROUS_PORTS:
@@ -25,9 +22,8 @@ def rate_port(port: int) -> dict:
         return {"port": port, "name": name, "risk": risk, "reason": reason}
     return {"port": port, "name": "unknown", "risk": "LOW", "reason": "Không có trong danh sách nguy hiểm"}
 
-
 def rate_host(open_ports: list) -> dict:
-    """Dùng bởi main.py — trả về dict với overall_risk và rated_ports."""
+
     if not open_ports:
         return {"overall_risk": "SAFE", "rated_ports": []}
 
@@ -42,9 +38,8 @@ def rate_host(open_ports: list) -> dict:
 
     return {"overall_risk": highest_risk, "rated_ports": rated_ports}
 
-
 def rate_device(open_ports: list) -> tuple:
-    """Dùng bởi web/app.py — trả về (level: str, reasons: list[str])."""
+
     if not open_ports:
         return "SAFE", []
 

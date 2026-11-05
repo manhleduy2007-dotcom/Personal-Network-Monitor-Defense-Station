@@ -4,7 +4,6 @@ from datetime import datetime
 
 LOG_FILE = "logs/alert_log.csv"
 
-
 def log_alert(ip: str):
     file_exists = os.path.exists(LOG_FILE)
 
