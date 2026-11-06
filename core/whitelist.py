@@ -37,7 +37,6 @@ def load_whitelist() -> set:
     return trusted
 
 def save_whitelist(whitelist: set) -> None:
-
     os.makedirs(os.path.dirname(WHITELIST_FILE), exist_ok=True)
     with open(WHITELIST_FILE, "w", encoding="utf-8") as f:
         json.dump(sorted(whitelist), f, indent=2)
