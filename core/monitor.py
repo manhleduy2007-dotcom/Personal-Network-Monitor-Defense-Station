@@ -1,10 +1,3 @@
-# core/monitor.py
-"""
-Background network monitor shared by the console and the web dashboard.
-
-One thread runs the scan loop (what main.py used to do). The web layer only
-reads its state and can ask it to scan now; it never scans by itself.
-"""
 import json
 import os
 import threading
@@ -19,7 +12,7 @@ from core.notifier import send_port_alert
 from core.port_scanner import scan_ports
 from core.risk_rater import rate_host
 from core.scanner import get_myip, get_network, parse_results, scan_network
-from core.whitelist import add_to_whitelist, is_trusted
+from core.whitelist import is_trusted
 
 RESULT_FILE = Path("data/web_scan_result.json")
 EVENT_BUFFER = 500
@@ -28,8 +21,7 @@ EVENT_BUFFER = 500
 class Monitor:
     def __init__(self, interval: int, on_event=None):
         self.interval = max(10, int(interval))
-        self.on_event = on_event  # optional callback, e.g. print to console
-
+        self.on_event = on_event 
         self.my_ip = get_myip()
         self.network = get_network(self.my_ip)
         self.is_root = getattr(os, "geteuid", lambda: 0)() == 0
@@ -40,23 +32,20 @@ class Monitor:
         self._thread = None
 
         self._status = {
-            "state": "starting",  # starting | discovering | scanning | waiting | error
+            "state": "starting",  
             "current_ip": None,
             "done": 0,
             "total": 0,
             "error": None,
             "cycle": 0,
-            "next_scan_at": None,  # unix timestamp
+            "next_scan_at": None,  
         }
         self._result = self._load_result()
         self._events = deque(maxlen=EVENT_BUFFER)
         self._event_id = 0
 
-    # ------------------------------------------------------------------ public
+   
     def start(self):
-        if not is_trusted(self.my_ip):
-            add_to_whitelist(self.my_ip)
-            self.emit("dim", f"auto-whitelisted own IP {self.my_ip}")
         self._thread = threading.Thread(target=self._loop, name="monitor", daemon=True)
         self._thread.start()
 
@@ -65,7 +54,6 @@ class Monitor:
         self._wake.set()
 
     def trigger_scan(self) -> bool:
-        """Ask the loop to scan now. Returns False if a scan is already running."""
         with self._lock:
             if self._status["state"] in ("discovering", "scanning"):
                 return False
@@ -77,7 +65,7 @@ class Monitor:
             return dict(self._status, interval=self.interval,
                         finished_at=self._result.get("finished_at"))
 
-    def result(self) -> dict:
+    def result(self) -> dict:       
         with self._lock:
             return json.loads(json.dumps(self._result))  # deep copy
 
@@ -100,7 +88,6 @@ class Monitor:
         if self.on_event:
             self.on_event(event)
 
-    # ----------------------------------------------------------------- loop
     def _loop(self):
         self.emit("ok", f"monitor started on {self.network}, scanning every {self.interval}s")
         if not self.is_root:
@@ -112,7 +99,7 @@ class Monitor:
             next_at = time.time() + self.interval
             self._set_status(next_scan_at=next_at,
                              state="error" if self._status["error"] else "waiting")
-            # Sleep until the interval passes, or until someone presses "scan now"
+    
             self._wake.wait(timeout=self.interval)
             self._wake.clear()
 
@@ -159,7 +146,7 @@ class Monitor:
             self._save_result()
             self._set_status(done=len(hosts), current_ip=None)
 
-            threats = sum(1 for d in devices if d["risk"] in ("HIGH", "CRITICAL") and not d["is_self"])
+            threats = sum(1 for d in devices if d["risk"] in ("HIGH", "CRITICAL"))
             self.emit("warn" if threats else "ok",
                       f"[+] scan #{cycle} complete: {len(devices)} host(s), {threats} high-risk")
 
@@ -167,7 +154,6 @@ class Monitor:
             self._set_status(error=str(e), current_ip=None)
             self.emit("err", f"[x] scan #{cycle} failed: {e}")
 
-    # ------------------------------------------------------------ per host
     def _scan_host(self, ip: str):
         open_ports = scan_ports(ip)
         risk_result = rate_host(open_ports)
@@ -191,16 +177,16 @@ class Monitor:
         }
         return device, risk_result
 
+
+
+
+
     def _check_host(self, device: dict, risk_result: dict, appeared: list, previous_ports: dict):
-        """
-        Two independent checks:
-          1. Unknown device joined the network            -> alert if not whitelisted
-          2. Known host opened ports it did not have before -> alert EVEN IF whitelisted
-        """
+        
         ip = device["ip"]
         current = {p["port"] for p in device["ports"]}
 
-        if ip in appeared and not is_trusted(ip):
+        if ip in appeared and not device["is_self"] and not is_trusted(ip):
             self._alert(ip, risk_result,
                         f"[!] NEW untrusted device {ip}, risk {device['risk']}, "
                         f"ports: {', '.join(map(str, sorted(current))) or 'none'}")
@@ -209,7 +195,7 @@ class Monitor:
         if ip in previous_ports:
             new_ports = current - previous_ports[ip]
             if new_ports:
-                trust = "whitelisted" if is_trusted(ip) else "untrusted"
+                trust = "this machine" if device["is_self"] else ("whitelisted" if is_trusted(ip) else "untrusted")
                 self._alert(ip, risk_result,
                             f"[!] PORT CHANGE on {trust} host {ip}: newly open "
                             f"{', '.join(map(str, sorted(new_ports)))}")
@@ -217,18 +203,21 @@ class Monitor:
             if closed:
                 self.emit("dim", f"[-] {ip} closed port(s) {', '.join(map(str, sorted(closed)))}")
 
+
+
+
+
     def _alert(self, ip: str, risk_result: dict, message: str):
         self.emit("err", message)
         try:
             send_port_alert(ip, risk_result)
-        except Exception as e:  # a broken notifier must never stop the monitor
+        except Exception as e: 
             self.emit("warn", f"[!] notifier failed: {e}")
         try:
             log_alert(ip)
         except Exception as e:
             self.emit("warn", f"[!] alert log failed: {e}")
 
-    # ------------------------------------------------------------- helpers
     def _set_status(self, **kwargs):
         with self._lock:
             self._status.update(kwargs)
@@ -244,4 +233,4 @@ class Monitor:
         tmp = RESULT_FILE.with_suffix(".tmp")
         with self._lock:
             tmp.write_text(json.dumps(self._result, indent=2), encoding="utf-8")
-        os.replace(tmp, RESULT_FILE)  # atomic: the file is never half-written
+        os.replace(tmp, RESULT_FILE) 

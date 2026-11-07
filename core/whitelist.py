@@ -33,38 +33,66 @@ def _load_raw():
     except (json.JSONDecodeError, OSError):
         return []
 
+def _iter_values(raw):
+    if isinstance(raw, dict):            
+        yield from raw.keys()
+        return
+    for item in raw:
+        if isinstance(item, str):       
+            yield item
+        elif isinstance(item, dict):     
+            for field in ("mac", "ip"):
+                if item.get(field):
+                    yield item[field]
+ 
+
 def load_whitelist() -> set:
-
-    raw = _load_raw()
     trusted = set()
-
-    if isinstance(raw, dict):
-
-        for key in raw:
-            trusted.add(str(key).lower())
-    else:
-        for item in raw:
-            if isinstance(item, str):
-                trusted.add(item.lower())
-            elif isinstance(item, dict):
-
-                for field in ("mac", "ip"):
-                    val = item.get(field)
-                    if val:
-                        trusted.add(str(val).lower())
-
+    for value in _iter_values(_load_raw()):
+        try:
+            trusted.add(normalize_entry(value))
+        except ValueError:
+            if value not in _warned:
+                _warned.add(value)
+                print(f"[!] Ignoring invalid whitelist entry: {value!r}")
     return trusted
 
 def save_whitelist(whitelist: set) -> None:
-    os.makedirs(os.path.dirname(WHITELIST_FILE), exist_ok=True)
-    with open(WHITELIST_FILE, "w", encoding="utf-8") as f:
-        json.dump(sorted(whitelist), f, indent=2)
+    WHITELIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=WHITELIST_FILE.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(sorted(whitelist), f, indent=2)
+        os.replace(tmp, WHITELIST_FILE)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+ 
 
 def add_to_whitelist(value: str) -> bool:
-    wl = load_whitelist()
-    wl.add(normalize_entry(value))
-    save_whitelist(wl)
-    print(f"[+] Added {value} to whitelist")
+    entry = normalize_entry(value)
+    with _lock: 
+        wl = load_whitelist() 
+        if entry in wl:
+            return False
+        wl.add(entry) 
+        save_whitelist(wl)
+    return True
+
+def remove_from_whitelist(value: str) -> bool:
+    try:
+        entry = normalize_entry(value)
+    except ValueError:
+        return False
+    with _lock:
+        wl = load_whitelist()
+        if entry not in wl:
+            return False
+        wl.discard(entry)
+        save_whitelist(wl)
+    return True
+ 
 
 def is_trusted(value: str) -> bool:
     try: 
