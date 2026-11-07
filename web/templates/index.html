@@ -766,6 +766,7 @@
 
         .tl .t {
             color: var(--dim);
+            text-shadow: none;
         }
 
         :root[data-theme="light"] .tl .t {
@@ -1080,7 +1081,7 @@
                 <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
             </svg>
         </button>
-        <button class="btn btn-hi" id="scanBtn">&#9654; SCAN NETWORK</button>
+        <button class="btn btn-hi" id="scanBtn">&#9654; SCAN NOW</button>
         <div class="progress" aria-hidden="true">
             <div id="progressBar"></div>
         </div>
@@ -1093,7 +1094,7 @@
             <div class="radar-wrap">
                 <svg id="radar" viewBox="0 0 400 400" role="img" aria-label="Radar map of devices by risk"></svg>
                 <div class="sweep" aria-hidden="true"></div>
-                <div class="radar-empty" id="radarEmpty">No scan data. Press SCAN NETWORK or type "scan".</div>
+                <div class="radar-empty" id="radarEmpty">Waiting for the first scan...</div>
             </div>
         </section>
 
@@ -1187,12 +1188,14 @@
     <script>
         const NETWORK = "{{ network }}";
         const MY_IP = "{{ my_ip }}";
+        const INTERVAL = {{ interval }};
+        const EVENT_KIND = { ok: "ok", warn: "warn", err: "err", dim: "dim", info: "" };
 
         const RISK_LABEL = { CRITICAL: "CRITICAL", HIGH: "HIGH", MEDIUM: "MEDIUM", LOW: "LOW", SAFE: "SAFE", NONE: "SAFE", UNKNOWN: "UNKNOWN" };
         const RISK_ORDER = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, SAFE: 0, NONE: 0, UNKNOWN: 0 };
         const RISK_TONE = { CRITICAL: "high", HIGH: "high", MEDIUM: "medium", LOW: "low", SAFE: "safe", NONE: "safe", UNKNOWN: "safe" };
 
-        const state = { devices: [], whitelist: [], finishedAt: null, selected: null, filter: "ALL", query: "", polling: null, lastKey: "" };
+        const state = { devices: [], whitelist: [], finishedAt: null, selected: null, filter: "ALL", query: "", lastEventId: 0, live: null, offline: false, booted: false };
         const $ = (id) => document.getElementById(id);
 
         /* ---------- Helpers ---------- */
@@ -1203,7 +1206,8 @@
         function riskOf(d) { return norm(d.risk); }
         function tone(r) { return RISK_TONE[norm(r)]; }
         function isHigh(d) { return ["HIGH", "CRITICAL"].includes(riskOf(d)); }
-        function isThreat(d) { return isHigh(d) && !d.trusted && !d.is_self; }
+        // Whitelisting never hides a dangerous port: any HIGH/CRITICAL host is a threat
+        function isThreat(d) { return isHigh(d); }
         function octet(ip) { return "." + String(ip).split(".").pop(); }
         function pad(n) { return String(n).padStart(2, "0"); }
         function fmtTime(iso) { return iso ? new Date(iso).toLocaleString("en-GB") : "never"; }
@@ -1226,18 +1230,19 @@
         }
 
         /* ---------- Terminal ---------- */
-        function log(text, kind = "") {
+        function log(text, kind = "", iso = null) {
             const out = $("termOut");
             const line = document.createElement("div");
             line.className = "tl " + kind;
-            line.innerHTML = `<span class="t">${new Date().toLocaleTimeString("en-GB")}</span> ${esc(text)}`;
+            const t = (iso ? new Date(iso) : new Date()).toLocaleTimeString("en-GB");
+            line.innerHTML = `<span class="t">${t}</span> ${esc(text)}`;
             out.appendChild(line);
             while (out.children.length > 400) out.firstChild.remove();
             out.scrollTop = out.scrollHeight;
         }
 
         const HELP = [
-            "scan                 run a full network + port scan",
+            `scan                 scan now (auto-monitor also scans every ${INTERVAL}s)`,
             "hosts                list hosts from the last scan",
             "info <ip>            show open ports of a host",
             "trust <ip>           add a host to the whitelist",
@@ -1292,7 +1297,6 @@
             state.devices = (data.devices || []).sort((a, b) => RISK_ORDER[riskOf(b)] - RISK_ORDER[riskOf(a)] || a.ip.localeCompare(b.ip, undefined, { numeric: true }));
             state.finishedAt = data.finished_at;
             if (state.selected && !state.devices.some(d => d.ip === state.selected)) state.selected = null;
-            if (!state.polling) $("status").textContent = state.finishedAt ? `LAST SCAN ${fmtTime(state.finishedAt)}` : "IDLE";
             renderAll();
         }
 
@@ -1310,61 +1314,64 @@
             renderWhitelist();
         }
 
-        /* ---------- Scanning ---------- */
+        /* ---------- Live monitor feed ----------
+           The server scans on its own every INTERVAL seconds. The page polls every 2s:
+           new events go to the terminal, and results reload when a scan finishes. */
         async function startScan() {
             try {
                 await api("/api/scan", { method: "POST" });
-                $("scanBtn").disabled = true;
-                $("scanBtn").textContent = "SCANNING...";
-                state.lastKey = "";
-                log(`[>] scan started on ${NETWORK}`, "ok");
-                pollStatus();
-            } catch (e) { log(`[x] ${e.message}`, "err"); toast(e.message, true); }
+                setTimeout(tick, 300);
+            } catch (e) { log(`[x] ${e.message}`, "warn"); toast(e.message, true); }
         }
 
-        function pollStatus() {
-            clearInterval(state.polling);
-            state.polling = setInterval(async () => {
-                let s;
-                try { s = await api("/api/status"); } catch { return; }
-                const bar = $("progressBar");
+        async function pullEvents() {
+            const events = await api(`/api/events?since=${state.lastEventId}`);
+            for (const ev of events) {
+                log(ev.msg, EVENT_KIND[ev.level] ?? "", ev.time);
+                state.lastEventId = ev.id;
+                // Only alerts from a live scan pop up; history replayed on page load stays in the terminal
+                if (state.booted && ev.level === "err" && ev.msg.startsWith("[!]")) toast(ev.msg, true);
+            }
+        }
 
-                if (s.status === "discovering") {
-                    if (state.lastKey !== "discovering") log("[~] discovering live hosts...", "dim");
-                    state.lastKey = "discovering";
-                    $("status").textContent = "DISCOVERING HOSTS";
-                    bar.style.width = "6%";
-                } else if (s.status === "scanning") {
-                    if (!state.lastKey.startsWith("scan:")) log(`[+] ${s.total} host(s) online`, "ok");
-                    const key = "scan:" + s.current_ip;
-                    if (state.lastKey !== key && s.current_ip) log(`[~] probing ports on ${s.current_ip}  (${s.done + 1}/${s.total})`);
-                    state.lastKey = key;
-                    const pct = Math.round(6 + 94 * (s.done / Math.max(s.total, 1)));
-                    $("status").textContent = `SCANNING ${s.current_ip || ""} ${pct}%`;
-                    bar.style.width = pct + "%";
-                } else {
-                    clearInterval(state.polling); state.polling = null;
-                    $("scanBtn").disabled = false;
-                    $("scanBtn").innerHTML = "&#9654; SCAN NETWORK";
-                    bar.style.width = "100%";
-                    setTimeout(() => bar.style.width = "0", 700);
-                    if (s.status === "error") {
-                        $("status").textContent = "SCAN FAILED";
-                        log(`[x] scan failed: ${s.error}`, "err");
-                        toast(`Scan failed: ${s.error}`, true);
-                    } else {
-                        await Promise.all([loadDevices(), loadAlerts()]);
-                        reportFindings();
-                        toast(`Scan complete: ${s.total} host(s) checked`);
-                    }
+        async function tick() {
+            try {
+                await pullEvents();
+                const s = await api("/api/status");
+                state.live = s;
+                if (s.finished_at && s.finished_at !== state.finishedAt) {
+                    await Promise.all([loadDevices(), loadAlerts()]);
                 }
-            }, 1500);
+                if (state.offline) { log("[+] reconnected to server", "ok"); state.offline = false; }
+                renderStatus();
+            } catch {
+                if (!state.offline) { log("[x] lost connection to server", "err"); state.offline = true; }
+                $("status").textContent = "SERVER OFFLINE";
+                $("scanBtn").disabled = true;
+            }
         }
 
-        function reportFindings() {
-            const threats = state.devices.filter(isThreat);
-            log(`[+] scan complete. ${state.devices.length} host(s), ${threats.length} threat(s)`, threats.length ? "warn" : "ok");
-            threats.forEach(d => log(`[!] ${d.ip} ${RISK_LABEL[riskOf(d)]}  open: ${(d.ports || []).map(p => `${p.port}/${p.service}`).join(" ")}`, "err"));
+        function renderStatus() {
+            const s = state.live;
+            if (!s || state.offline) return;
+            const bar = $("progressBar"), btn = $("scanBtn");
+            const running = s.state === "discovering" || s.state === "scanning";
+            btn.disabled = running;
+            btn.innerHTML = running ? "SCANNING..." : "&#9654; SCAN NOW";
+
+            if (s.state === "discovering") {
+                $("status").textContent = `SCAN #${s.cycle} // DISCOVERING`;
+                bar.style.width = "6%";
+            } else if (s.state === "scanning") {
+                const pct = Math.round(6 + 94 * (s.done / Math.max(s.total, 1)));
+                $("status").textContent = `SCAN #${s.cycle} // ${s.current_ip || ""} ${pct}%`;
+                bar.style.width = pct + "%";
+            } else {
+                bar.style.width = "0";
+                const left = s.next_scan_at ? Math.max(0, Math.round(s.next_scan_at - Date.now() / 1000)) : null;
+                const prefix = s.state === "error" ? "LAST SCAN FAILED" : "AUTO-MONITOR";
+                $("status").textContent = left === null ? prefix : `${prefix} // NEXT SCAN ${left}s`;
+            }
         }
 
         /* ---------- Rendering ---------- */
@@ -1441,7 +1448,7 @@
             const rows = visibleDevices();
             $("hostsTag").textContent = `${rows.length}/${state.devices.length} SHOWN`;
             if (!rows.length) {
-                $("hostRows").innerHTML = `<tr class="empty"><td colspan="6">${state.devices.length ? "No hosts match this filter." : "No data yet. Press SCAN NETWORK to start."}</td></tr>`;
+                $("hostRows").innerHTML = `<tr class="empty"><td colspan="6">${state.devices.length ? "No hosts match this filter." : "Waiting for the first scan..."}</td></tr>`;
                 return;
             }
             $("hostRows").innerHTML = rows.map((d, i) => `
@@ -1525,10 +1532,10 @@
                 word = "STANDBY"; sub = "no scan data"; icon = LOCK_CLOSED; cls = "c-safe";
             } else if (threats.length) {
                 word = "THREAT"; icon = LOCK_OPEN; cls = "c-high";
-                sub = `${threats.length} untrusted high-risk host(s): ${threats.slice(0, 3).map(d => d.ip).join(", ")}${threats.length > 3 ? "..." : ""}`;
+                sub = `${threats.length} high-risk host(s): ${threats.slice(0, 3).map(d => d.ip).join(", ")}${threats.length > 3 ? "..." : ""}`;
             } else {
                 word = "SECURE"; icon = LOCK_CLOSED; cls = "c-low";
-                sub = `${state.devices.length} host(s) checked, no untrusted high-risk hosts`;
+                sub = `${state.devices.length} host(s) checked, no high-risk ports open`;
             }
             box.classList.toggle("alarm", threats.length > 0);
             $("threatTag").textContent = threats.length ? `${threats.length} ACTIVE` : "";
@@ -1574,7 +1581,7 @@
                 const data = await api("/api/whitelist", { method: "POST", body: JSON.stringify({ ip }) });
                 state.whitelist = data.entries; renderWhitelist();
                 await loadDevices();
-                log(`[+] ${ip} added to whitelist`, "ok");
+                tick();
             } catch (e) { log(`[x] ${e.message}`, "err"); toast(e.message, true); }
         }
         async function untrust(ip) {
@@ -1582,7 +1589,7 @@
                 const data = await api(`/api/whitelist?ip=${encodeURIComponent(ip)}`, { method: "DELETE" });
                 state.whitelist = data.entries; renderWhitelist();
                 await loadDevices();
-                log(`[-] ${ip} removed from whitelist`, "warn");
+                tick();
             } catch (e) { log(`[x] ${e.message}`, "err"); toast(e.message, true); }
         }
 
@@ -1646,7 +1653,7 @@
         });
         document.querySelector(".term").addEventListener("click", e => { if (!e.target.closest("button")) $("termInput").focus(); });
         new ResizeObserver(setupBinary).observe($("threatBox"));
-        setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-GB"); }, 1000);
+        setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("en-GB"); renderStatus(); }, 1000);
 
         /* ---------- Boot ---------- */
         (async () => {
@@ -1654,26 +1661,14 @@
             applyTheme(document.documentElement.getAttribute("data-theme") || "dark");
             if (!matchMedia("(prefers-reduced-motion: reduce)").matches) bin.timer = setInterval(tickBinary, 140);
 
-            log("DEFENSE_STATION v3.0 // personal network monitor", "ok");
-            log(`interface ${MY_IP} on ${NETWORK}`, "dim");
-            log("loading last scan...", "dim");
+            log("DEFENSE_STATION v4.0 // live network monitor", "ok");
+            log(`interface ${MY_IP} on ${NETWORK}, auto-scan every ${INTERVAL}s`, "dim");
             await Promise.allSettled([loadDevices(), loadAlerts(), loadWhitelist()]);
-            if (state.devices.length) {
-                log(`[+] ${state.devices.length} host(s) from scan at ${fmtTime(state.finishedAt)}`, "ok");
-                const threats = state.devices.filter(isThreat);
-                if (threats.length) log(`[!] ${threats.length} untrusted high-risk host(s). type 'hosts' to list`, "err");
-            } else {
-                log("no previous scan. type 'scan' or press SCAN NETWORK", "warn");
-            }
-            log("type 'help' for commands", "dim");
-
-            // If the page is reopened mid-scan, keep tracking it
-            const s = await api("/api/status").catch(() => null);
-            if (s && ["discovering", "scanning"].includes(s.status)) {
-                $("scanBtn").disabled = true; $("scanBtn").textContent = "SCANNING...";
-                log("[~] a scan is already running, attaching...", "dim");
-                pollStatus();
-            }
+            log("--- monitor history ---", "dim");
+            await tick();           // replays recent server events, then shows live status
+            state.booted = true;
+            log("--- live --- type 'help' for commands", "dim");
+            setInterval(tick, 2000);
         })();
     </script>
 </body>
