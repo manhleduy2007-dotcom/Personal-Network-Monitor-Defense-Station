@@ -1,97 +1,86 @@
+# main.py
+"""
+Personal Network Monitor Defense Station - Phase 4
+
+One process, two parts:
+  - Monitor thread: scans the network every SCAN_INTERVAL seconds (core/monitor.py)
+  - Web dashboard:  shows the same live data at http://127.0.0.1:5050 (web/app.py)
+
+Usage (from the project root):
+    sudo venv/bin/python main.py                 # monitor + web dashboard
+    sudo venv/bin/python main.py --no-web        # monitor only, console output
+    sudo venv/bin/python main.py --interval 30   # override SCAN_INTERVAL
+"""
+import argparse
+import logging
+import os
 import time
+from datetime import datetime
+from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent
+os.chdir(BASE_DIR)  # core/ modules use relative paths like "data/whitelist.json"
+
+# pyrefly: ignore [missing-import]
 from rich.console import Console
+# pyrefly: ignore [missing-import]
+from rich.markup import escape
 
-from rich.table import Table
-from core.scanner import get_myip, get_network, scan_network, parse_results
-from core.change_detector import load_last_scan, save_scan, compare_scans
-from core.notifier import send_alert
-from core.whitelist import is_trusted, add_to_whitelist
-from core.logger import log_alert
 from config import SCAN_INTERVAL
-from core.port_scanner import scan_ports
-from core.risk_rater import rate_host
-from core.notifier import send_alert, send_port_alert
+from core.monitor import Monitor
+
 console = Console()
+LEVEL_STYLE = {"ok": "green", "warn": "yellow", "err": "bold red", "dim": "dim", "info": "cyan"}
 
-def show_current(hosts, my_ip):
-    table = Table(title="Devices Online")
-    table.add_column("No.", style="dim", width=5)
-    table.add_column("IP Address", style="cyan")
-    table.add_column("Note", style="yellow")
-    for i, ip in enumerate(hosts, 1):
-        note = "← This machine" if ip == my_ip else ""
-        table.add_row(str(i), ip, note)
-    console.print(table)
-    console.print(f"[green]Found {len(hosts)} device(s)[/green]\n")
 
-def show_changes(appeared, disappeared, old_time):
-    console.print(f"\n[bold]Compared to scan at {old_time}:[/bold]\n")
-    if not appeared and not disappeared:
-        console.print("[green]No changes — network is stable.[/green]")
-        return
-    if appeared:
-        table = Table(title="New Devices Detected", border_style="red")
-        table.add_column("IP Address", style="red")
-        table.add_column("Status", style="yellow")
-        for ip in appeared:
-            trusted = is_trusted(ip)
-            status = "✓ Whitelisted" if trusted else "⚠ UNKNOWN — alert sent!"
-            table.add_row(ip, status)
-        console.print(table)
-    if disappeared:
-        table = Table(title="Devices Gone Offline", border_style="dim")
-        table.add_column("IP Address", style="dim")
-        table.add_column("Status", style="dim")
-        for ip in disappeared:
-            table.add_row(ip, "No longer on network")
-        console.print(table)
+def print_event(event: dict):
+    t = datetime.fromisoformat(event["time"]).strftime("%H:%M:%S")
+    style = LEVEL_STYLE.get(event["level"], "")
+    console.print(f"[dim]{t}[/dim] [{style}]{escape(event['msg'])}[/{style}]" if style
+                  else f"[dim]{t}[/dim] {escape(event['msg'])}")
 
-def process_appeared(appeared: list):
 
-    for ip in appeared:
-        if is_trusted(ip):
-            console.print(f"[green][OK] {ip} — whitelisted[/green]")
-        else:
-            console.print(f"[red][!!] {ip} — UNKNOWN, sending alert...[/red]")
-            open_ports = scan_ports(ip)
-            risk_result = rate_host(open_ports)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Personal Network Monitor Defense Station")
+    parser.add_argument("--no-web", action="store_true", help="run the monitor without the web dashboard")
+    parser.add_argument("--host", default="127.0.0.1", help="web host (default: 127.0.0.1, this machine only)")
+    parser.add_argument("--port", type=int, default=5050, help="web port (default: 5050)")
+    parser.add_argument("--interval", type=int, default=SCAN_INTERVAL, help="seconds between scans")
+    return parser.parse_args()
 
-            console.print(f"[red]    Risk: {risk_result['overall_risk']}[/red]")
-            for p in risk_result["rated_ports"]:
-                console.print(f"[dim]    → port {p['port']} ({p['name']}) — {p['risk']}[/dim]")
-            send_port_alert(ip, risk_result)
-            log_alert(ip)
 
 def main():
-    console.print("\n[bold]Personal Network Monitor — Phase 1[/bold]\n")
-    my_ip = get_myip()
-    if not is_trusted(my_ip):
-        add_to_whitelist(my_ip)
-        console.print(f"[dim]Auto-whitelisted own IP: {my_ip}[/dim]")
+    args = parse_args()
+    console.print("\n[bold]Personal Network Monitor — Phase 4[/bold]\n")
 
-    network = get_network(my_ip)
-    console.print(f"My IP: [cyan]{my_ip}[/cyan]")
-    console.print(f"Network: [cyan]{network}[/cyan]\n")
+    monitor = Monitor(interval=args.interval, on_event=print_event)
+    console.print(f"My IP:    [cyan]{monitor.my_ip}[/cyan]")
+    console.print(f"Network:  [cyan]{monitor.network}[/cyan]")
+    console.print(f"Interval: [cyan]{monitor.interval}s[/cyan]\n")
+    if not monitor.is_root:
+        console.print("[bold red][!] Not running as root, scans will fail.[/bold red] "
+                      "Use: sudo venv/bin/python main.py\n")
 
-    while True:
-        console.print("[dim]Scanning...[/dim]")
-        raw = scan_network(network)
-        current_hosts = parse_results(raw)
+    monitor.start()
 
-        show_current(current_hosts, my_ip)
-
-        last_scan = load_last_scan()
-        if last_scan is None:
-            console.print("[yellow]First run — no previous data.[/yellow]\n")
+    try:
+        if args.no_web:
+            while True:
+                time.sleep(1)
         else:
-            appeared, disappeared = compare_scans(last_scan["hosts"], current_hosts)
-            show_changes(appeared, disappeared, last_scan["scan_time"])
-            process_appeared(appeared)
+            from web.app import create_app
 
-        save_scan(current_hosts)
-        console.print(f"\n[dim]Next scan in {SCAN_INTERVAL}s...[/dim]\n")
-        time.sleep(SCAN_INTERVAL)
+            # The dashboard polls every 2s; hide those request lines from the console
+            logging.getLogger("werkzeug").setLevel(logging.WARNING)
+            console.print(f"[bold green]Dashboard:[/bold green] http://{args.host}:{args.port}\n")
+            create_app(monitor).run(host=args.host, port=args.port,
+                                    debug=False, use_reloader=False, threaded=True)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        monitor.stop()
+        console.print("\n[dim]Monitor stopped.[/dim]")
+
 
 if __name__ == "__main__":
     main()
