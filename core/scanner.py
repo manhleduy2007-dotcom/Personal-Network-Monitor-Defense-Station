@@ -17,7 +17,6 @@ def get_network(ip):
     return f"{parts[0]}.0/24"
 
 def scan_network(network):
-    console.print(f"[dim]Scanning {network}...[/dim]")
     result = subprocess.run(
         ["nmap", "-sn", "--privileged", network],
         stdout=subprocess.PIPE,

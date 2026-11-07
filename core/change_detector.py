@@ -1,10 +1,5 @@
 import json
 from datetime import datetime
-
-from rich.console import Console
-
-console = Console()
-
 SAVE_FILE = "data/last_scan.json"
 
 def save_scan(hosts):
@@ -14,7 +9,6 @@ def save_scan(hosts):
     }
     with open(SAVE_FILE, "w") as f:
         json.dump(data, f, indent=2)
-    console.print(f"[dim]Results saved to {SAVE_FILE}[/dim]")
 
 def load_last_scan():
     try:
