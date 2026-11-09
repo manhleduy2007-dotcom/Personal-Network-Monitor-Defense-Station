@@ -1,60 +1,60 @@
+import html
 import requests
-from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+from config import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 
 TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+TIMEOUT = 10
+RISK_EMOJI = {"LOW": "🟡", "MEDIUM": "🟠", "HIGH": "🔴", "CRITICAL": "🚨"}
 
-def send_alert(ip: str):
-    message = (
-        f"🚨 *ALERT: Unknown device!*\n\n"
-        f"📍 IP: `{ip}`\n"
-        f"⚠️ This IP is not in whitelist."
-    )
+class NotifierError(RuntimeError):
+    pass
+
+def _e(value) -> str:
+    return html.escape(str(value))
+
+def _send(text: str) -> None:
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        raise NotifierError("TELEGRAM_TOKEN or TELEGRAM_CHAT_ID is missing, check .env")
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown"
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
     }
     try:
-        response = requests.post(TELEGRAM_URL, json=payload, timeout=10)
-        if response.status_code == 200:
-            print(f"[✓] Alert sent: {ip}")
-        else:
-            print(f"[!] Alert failed: {response.text}")
+        response = requests.post(TELEGRAM_URL, json=payload, timeout=TIMEOUT)
     except requests.exceptions.RequestException as e:
-        print(f"[!] Telegram connection error: {e}")
+        raise NotifierError(f"cannot reach Telegram ({e.__class__.__name__})") from None
 
-def send_port_alert(ip: str, risk_result: dict):
-    risk = risk_result["overall_risk"]
-    rated_ports = risk_result["rated_ports"]
-    emoji = {
-        "LOW":      "🟡",
-        "MEDIUM":   "🟠",
-        "HIGH":     "🔴",
-        "CRITICAL": "🚨"
-    }.get(risk, "⚠️")
+    if response.status_code != 200:
+        try:
+            detail = response.json().get("description", "")
+        except ValueError:
+            detail = response.text[:200]
+        raise NotifierError(f"Telegram API {response.status_code}: {detail}")
 
-    port_lines = ""
-    for p in rated_ports:
-        port_lines += f"\n  • Port {p['port']} ({p['name']}) — {p['risk']}: {p['reason']}"
 
-    message = (
-        f"{emoji} *ALERT: Unknown device — Risk {risk}*\n\n"
-        f"📍 IP: `{ip}`\n"
-        f"🔓 Open ports:{port_lines}\n\n"
-        f"⚠️ Check this device immediately!"
+def send_alert(ip: str) -> None:
+    _send(
+        "🚨 <b>ALERT: Unknown device</b>\n\n"
+        f"📍 IP: <code>{_e(ip)}</code>\n"
+        "⚠️ This IP is not in the whitelist."
     )
 
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
 
-    try:
-        response = requests.post(TELEGRAM_URL, json=payload, timeout=10)
-        if response.status_code == 200:
-            print(f"[✓] Port alert sent: {ip} — {risk}")
-        else:
-            print(f"[!] Alert failed: {response.text}")
-    except requests.exceptions.RequestException as e:
-        print(f"[!] Telegram connection error: {e}")
+def send_port_alert(ip: str, risk_result: dict, reason: str = "Unknown device") -> None:
+    risk = str(risk_result.get("overall_risk", "UNKNOWN")).upper()
+
+    lines = []
+    for p in risk_result.get("rated_ports", []):
+        line = f"  • Port {_e(p.get('port', '?'))} ({_e(p.get('name', '?'))}) — {_e(p.get('risk', '?'))}"
+        if p.get("reason"):
+            line += f": {_e(p['reason'])}"
+        lines.append(line)
+
+    _send(
+        f"{RISK_EMOJI.get(risk, '⚠️')} <b>ALERT: {_e(reason)} — Risk {_e(risk)}</b>\n\n"
+        f"📍 IP: <code>{_e(ip)}</code>\n"
+        f"🔓 Open ports:\n{chr(10).join(lines) or '  • none'}\n\n"
+        "⚠️ Check this device immediately!"
+    )

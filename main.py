@@ -1,16 +1,3 @@
-# main.py
-"""
-Personal Network Monitor Defense Station - Phase 4
-
-One process, two parts:
-  - Monitor thread: scans the network every SCAN_INTERVAL seconds (core/monitor.py)
-  - Web dashboard:  shows the same live data at http://127.0.0.1:5050 (web/app.py)
-
-Usage (from the project root):
-    sudo venv/bin/python main.py                 # monitor + web dashboard
-    sudo venv/bin/python main.py --no-web        # monitor only, console output
-    sudo venv/bin/python main.py --interval 30   # override SCAN_INTERVAL
-"""
 import argparse
 import logging
 import os
@@ -19,11 +6,9 @@ from datetime import datetime
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-os.chdir(BASE_DIR)  # core/ modules use relative paths like "data/whitelist.json"
+os.chdir(BASE_DIR)  
 
-# pyrefly: ignore [missing-import]
 from rich.console import Console
-# pyrefly: ignore [missing-import]
 from rich.markup import escape
 
 from config import SCAN_INTERVAL
@@ -69,8 +54,6 @@ def main():
                 time.sleep(1)
         else:
             from web.app import create_app
-
-            # The dashboard polls every 2s; hide those request lines from the console
             logging.getLogger("werkzeug").setLevel(logging.WARNING)
             console.print(f"[bold green]Dashboard:[/bold green] http://{args.host}:{args.port}\n")
             create_app(monitor).run(host=args.host, port=args.port,

@@ -1,17 +1,13 @@
 import csv
 from pathlib import Path
-
 from flask import Flask, jsonify, render_template, request
-
 from core.monitor import Monitor
 from core.whitelist import add_to_whitelist, load_whitelist, remove_from_whitelist
 
+
 ALERT_LOG_FILE = Path("logs/alert_log.csv")
-
-
 def create_app(monitor: Monitor) -> Flask:
     app = Flask(__name__)
-
     @app.get("/")
     def index():
         return render_template(
@@ -21,7 +17,6 @@ def create_app(monitor: Monitor) -> Flask:
             is_root=monitor.is_root,
             interval=monitor.interval,
         )
-
     @app.post("/api/scan")
     def scan_now():
         if not monitor.trigger_scan():

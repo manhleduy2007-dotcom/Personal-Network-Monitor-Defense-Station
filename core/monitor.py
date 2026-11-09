@@ -5,7 +5,6 @@ import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-
 from core.change_detector import compare_scans, load_last_scan, save_scan
 from core.logger import log_alert
 from core.notifier import send_port_alert
@@ -67,7 +66,7 @@ class Monitor:
 
     def result(self) -> dict:       
         with self._lock:
-            return json.loads(json.dumps(self._result))  # deep copy
+            return json.loads(json.dumps(self._result))  
 
     def events_since(self, event_id: int, limit: int = 200) -> list:
         with self._lock:
